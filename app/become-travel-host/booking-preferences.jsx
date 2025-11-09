@@ -15,7 +15,7 @@ export default function BookingPreferences() {
 
   const next = () =>
     router.push({
-      pathname: "/transport",
+      pathname: "/transport/TransportScreen",
       params: { bookingType, guestType },
     });
 

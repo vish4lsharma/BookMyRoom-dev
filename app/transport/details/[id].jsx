@@ -1,16 +1,68 @@
-import React from "react";
-import { View, Text, Image, ScrollView, TouchableOpacity, Linking } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, Image, ScrollView, TouchableOpacity, Linking, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { transportData } from "../data/transportData";
+import { transportAPI } from "../../../services/api";
 import styles from "../../../styles/transportDetailsStyles";
 
 export default function TransportDetails() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const data = transportData.find(item => item.id == id);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!data) return <Text>Data not found</Text>;
+  useEffect(() => {
+    loadTransportDetails();
+  }, [id]);
+
+  const loadTransportDetails = async () => {
+    try {
+      setLoading(true);
+      const response = await transportAPI.getById(id);
+      if (response.success && response.data) {
+        // Transform data to match component format
+        const transport = response.data;
+        setData({
+          id: transport._id || transport.id,
+          name: transport.name,
+          rating: transport.rating?.count || 0,
+          location: transport.location?.city || transport.location || 'Unknown',
+          image: transport.image?.url || transport.image || 'https://via.placeholder.com/400',
+          phone: transport.phone,
+          vehicleTypes: transport.vehicleTypes || [],
+        });
+      } else {
+        Alert.alert('Error', 'Transport service not found');
+        router.back();
+      }
+    } catch (error) {
+      console.error('Error loading transport details:', error);
+      Alert.alert('Error', 'Failed to load transport details. Please try again.');
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Loading details...</Text>
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: '#666' }}>Transport service not found</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 10 }}>
+          <Text style={{ color: '#007BFF' }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -50,9 +102,21 @@ export default function TransportDetails() {
         {/* Pricing Section */}
         <Text style={styles.sectionTitle}>Vehicle & Pricing</Text>
         <View style={styles.priceBox}>
-          <Text style={styles.priceText}>Truck 14FT — ₹2500/trip</Text>
-          <Text style={styles.priceText}>Tata Ace — ₹800/trip</Text>
-          <Text style={styles.priceText}>Lorry 22FT — ₹4500/trip</Text>
+          {data.vehicleTypes && data.vehicleTypes.length > 0 ? (
+            data.vehicleTypes.map((vehicle, index) => (
+              <Text key={index} style={styles.priceText}>
+                {vehicle.type ? vehicle.type.charAt(0).toUpperCase() + vehicle.type.slice(1) : 'Vehicle'} 
+                {vehicle.capacity ? ` (${vehicle.capacity} capacity)` : ''} 
+                {vehicle.pricePerKm ? ` — ₹${vehicle.pricePerKm}/km` : ' — Contact for pricing'}
+              </Text>
+            ))
+          ) : (
+            <>
+              <Text style={styles.priceText}>Truck 14FT — ₹2500/trip</Text>
+              <Text style={styles.priceText}>Tata Ace — ₹800/trip</Text>
+              <Text style={styles.priceText}>Lorry 22FT — ₹4500/trip</Text>
+            </>
+          )}
         </View>
 
         {/* Contact & Call Button */}

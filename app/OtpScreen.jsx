@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,29 +9,56 @@ import {
   ScrollView,
   Alert,
   useWindowDimensions,
+  ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 
 const scaleFont = (size, width) => Math.round(size * (width / 375));
 
 export default function OtpScreen() {
   const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { width, height } = useWindowDimensions();
   const styles = getStyles(width, height);
 
+  const phone = params.phone || "";
+
+  useEffect(() => {
+    if (!phone) {
+      Alert.alert("Error", "Phone number is required");
+      router.back();
+    }
+  }, [phone]);
+
   const validate = () => {
-    if (!/^[0-9]{4,6}$/.test(otp)) {
-      Alert.alert("Validation Error", "Please enter a valid 4-6 digit OTP");
+    if (!/^[0-9]{6}$/.test(otp)) {
+      Alert.alert("Validation Error", "Please enter a valid 6-digit OTP");
       return false;
     }
     return true;
   };
 
-  const handleSubmit = () => {
-    if (validate()) {
-      Alert.alert("Success", "OTP Verified Successfully!");
-      router.push("/explore/ExploreScreen");
+  const handleSubmit = async () => {
+    if (!validate()) return;
+
+    try {
+      setLoading(true);
+      const { authService } = require("../services/authService");
+      const response = await authService.loginWithOTP(phone, otp);
+      
+      if (response.success) {
+        Alert.alert("Success", "OTP Verified Successfully!");
+        router.replace("/explore/ExploreScreen");
+      } else {
+        Alert.alert("Error", response.message || "OTP verification failed");
+      }
+    } catch (error) {
+      console.error('OTP verification error:', error);
+      Alert.alert("Error", error.message || "OTP verification failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -62,8 +89,16 @@ export default function OtpScreen() {
             onChangeText={setOtp}
           />
 
-          <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-            <Text style={styles.submitText}>SUBMIT</Text>
+          <TouchableOpacity 
+            style={[styles.submitBtn, loading && styles.submitBtnDisabled]} 
+            onPress={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.submitText}>SUBMIT</Text>
+            )}
           </TouchableOpacity>
         </View>
       </ImageBackground>
@@ -145,5 +180,8 @@ const getStyles = (width, height) =>
       color: "#fff",
       fontSize: scaleFont(16, width),
       fontWeight: "600",
+    },
+    submitBtnDisabled: {
+      opacity: 0.6,
     },
   });

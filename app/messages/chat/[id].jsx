@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,9 +10,12 @@ import {
   SafeAreaView,
   StyleSheet,
   Dimensions,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { messagesAPI } from "../../../services/api";
 
 const { width } = Dimensions.get("window");
 const bubbleBase = {
@@ -108,23 +111,71 @@ export default function ChatRoom() {
     [params]
   );
 
-  const [thread, setThread] = useState(() => [
-    { id: "seed-1", from: "them", text: meta.preview, time: "12:00 pm" },
-  ]);
+  const [thread, setThread] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const send = () => {
+  useEffect(() => {
+    loadMessages();
+  }, [meta.id]);
+
+  const loadMessages = async () => {
+    try {
+      setLoading(true);
+      const response = await messagesAPI.getConversation(meta.id);
+      if (response.success && response.data) {
+        const messages = response.data.messages || [];
+        const transformed = messages.map((msg) => ({
+          id: msg._id || msg.id,
+          from: msg.sender === 'me' ? 'me' : 'them',
+          text: msg.content,
+          time: new Date(msg.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        }));
+        setThread(transformed);
+      } else {
+        // Fallback to preview message
+        setThread([{ id: "seed-1", from: "them", text: meta.preview, time: "12:00 pm" }]);
+      }
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      setThread([{ id: "seed-1", from: "them", text: meta.preview, time: "12:00 pm" }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const send = async () => {
     const t = text.trim();
     if (!t) return;
+    
     const now = new Date();
     const time = now.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
+    
+    // Optimistically add message
+    const tempId = String(Date.now());
     setThread((prev) => [
       ...prev,
-      { id: String(Date.now()), from: "me", text: t, time },
+      { id: tempId, from: "me", text: t, time },
     ]);
     setText("");
+    
+    try {
+      // Send to backend
+      await messagesAPI.sendMessage(meta.id, t);
+      // Reload messages to get server confirmation
+      loadMessages();
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Remove optimistic message on error
+      setThread((prev) => prev.filter(msg => msg.id !== tempId));
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    }
+    
     requestAnimationFrame(() =>
       listRef.current?.scrollToEnd({ animated: true })
     );

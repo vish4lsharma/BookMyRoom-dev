@@ -1,11 +1,13 @@
 // screens/message/MessageScreen.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   ScrollView,
   FlatList,
   TouchableWithoutFeedback,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import BottomNav from "../../components/common/BottomNav";
@@ -15,9 +17,12 @@ import FloatingButtons from "../../components/message/FloatingButtons";
 import MessageItem from "../../components/message/MessageItem";
 import useMessages from "../../archives/ArchiveMessages";
 import FeedbackCard from "../../components/message/FeedbackCard";
+import { messagesAPI } from "../../services/api";
 
 const MessageScreen = () => {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [conversations, setConversations] = useState([]);
 
   const {
     showArchive,
@@ -28,6 +33,36 @@ const MessageScreen = () => {
     activeData,
     messages,
   } = useMessages();
+
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      setLoading(true);
+      const response = await messagesAPI.getConversations(showArchive);
+      if (response.success && response.data) {
+        // Transform API data to match component format
+        const transformed = response.data.map((conv) => ({
+          id: conv._id || conv.id,
+          name: conv.participant?.name || "Unknown",
+          role: conv.participant?.role || "Member",
+          message: conv.lastMessage?.content || "No messages yet",
+          time: conv.lastMessage?.createdAt 
+            ? new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : "Now",
+          avatar: conv.participant?.avatar || "https://via.placeholder.com/100",
+        }));
+        setConversations(transformed);
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      // Fallback to mock data if API fails
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const [showFAB, setShowFAB] = useState(false);
   const [activeButton, setActiveButton] = useState(null);
@@ -69,6 +104,17 @@ const MessageScreen = () => {
   };
 
   const displayedData = getDisplayedData();
+  const finalData = conversations.length > 0 ? conversations : displayedData;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Loading messages...</Text>
+        <BottomNav active="Message" />
+      </View>
+    );
+  }
 
   return (
     <TouchableWithoutFeedback onPress={() => setShowFAB(false)}>
@@ -79,10 +125,11 @@ const MessageScreen = () => {
             resetToAll();
             setFilteredData([]);
             setActiveButton(null);
+            loadConversations();
           }}
         />
 
-        {displayedData.length === 0 ? (
+        {finalData.length === 0 ? (
           <ScrollView
             contentContainerStyle={{
               flexGrow: 1,
@@ -98,16 +145,25 @@ const MessageScreen = () => {
           </ScrollView>
         ) : (
           <FlatList
-            data={displayedData}
+            data={finalData}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <MessageItem
                 item={item}
-                onSwipe={
-                  showArchive
-                    ? () => unarchiveMessage(item)
-                    : () => archiveMessage(item)
-                }
+                onSwipe={async () => {
+                  try {
+                    if (showArchive) {
+                      await messagesAPI.archiveConversation(item.id);
+                      unarchiveMessage(item);
+                    } else {
+                      await messagesAPI.archiveConversation(item.id);
+                      archiveMessage(item);
+                    }
+                    loadConversations();
+                  } catch (error) {
+                    console.error('Error archiving conversation:', error);
+                  }
+                }}
                 onPress={() =>
                   router.push({
                     pathname: "/messages/chat/[id]",
@@ -122,6 +178,8 @@ const MessageScreen = () => {
               />
             )}
             contentContainerStyle={{ paddingBottom: 80 }}
+            refreshing={loading}
+            onRefresh={loadConversations}
           />
         )}
 

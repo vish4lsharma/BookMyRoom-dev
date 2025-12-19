@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+
 import MapView, { Marker } from "react-native-maps";
 
 import StepProgress from "../../components/becomeHost/common/StepProgress";

@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,67 +9,29 @@ import {
   Image,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons, MaterialIcons, AntDesign } from "@expo/vector-icons";
 import BottomNav from "../../components/common/BottomNav";
 import { useWishlist } from "../_store/wishlistStore";
+import { roomsAPI, wishlistAPI } from "../../services/api";
 
 const { width } = Dimensions.get("window");
-
-const MOCK_RESULTS = [
-  {
-    id: "1",
-    city: "Bareilly",
-    title: "Private room in Bareilly",
-    subtitle: "Ground-floor Room",
-    details: "1 double bed",
-    availableFrom: "20 Aug",
-    price: 1000,
-    unit: "24 hour",
-    rating: 4.5,
-    image:
-      "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=1600&auto=format&fit=crop",
-  },
-  {
-    id: "2",
-    city: "Bareilly",
-    title: "Cozy budget stay",
-    subtitle: "1BHK Apartment",
-    details: "1 double bed",
-    availableFrom: "18 Aug",
-    price: 1200,
-    unit: "24 hour",
-    rating: 4.2,
-    image:
-      "https://images.unsplash.com/photo-1505691938895-1758d7feb511?q=80&w=1600&auto=format&fit=crop",
-  },
-  {
-    id: "3",
-    city: "Bareilly",
-    title: "Sunlit private room",
-    subtitle: "Shared Apartment",
-    details: "1 queen bed",
-    availableFrom: "22 Aug",
-    price: 900,
-    unit: "24 hour",
-    rating: 4.6,
-    image:
-      "https://images.unsplash.com/photo-1519710164239-da123dc03ef4?q=80&w=1600&auto=format&fit=crop",
-  },
-];
 
 export default function ResultsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { add, remove, isWishlisted } = useWishlist();
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const city = (params.city || "Bareilly").toString();
-  const start = (params.start || "1 Sep").toString();
-  const end = (params.end || "1 Dec").toString();
-  const guests = (params.guests || "Add Adults").toString();
-
+  const city = (params.city || "").toString();
+  const start = (params.start || "").toString();
+  const end = (params.end || "").toString();
+  const guests = (params.guests || "").toString();
   const type = (params.type || "Any type").toString();
+  
   let reqLabel = [];
   try {
     reqLabel = params.reqLabel ? JSON.parse(params.reqLabel) : [];
@@ -77,6 +39,50 @@ export default function ResultsScreen() {
 
   const selectedReqText =
     reqLabel.length > 0 ? ` • ${reqLabel.slice(0, 2).join(", ")}${reqLabel.length > 2 ? " +" : ""}` : "";
+
+  useEffect(() => {
+    loadResults();
+  }, [city, params.min, params.max, type, params.req]);
+
+  const loadResults = async () => {
+    try {
+      setLoading(true);
+      
+      const searchParams = {
+        city: city || undefined,
+        minPrice: params.min || undefined,
+        maxPrice: params.max || undefined,
+        guests: guests || undefined,
+        placeType: type !== "Any type" ? type : undefined,
+        limit: 50,
+      };
+
+      const response = await roomsAPI.getAll(searchParams);
+      const rooms = response.data || [];
+
+      // Transform rooms to match component format
+      const transformedRooms = rooms.map((room) => ({
+        id: room._id || room.id,
+        title: room.title,
+        subtitle: room.subtitle || room.stayType,
+        details: `${room.beds || 1} ${room.beds === 1 ? 'bed' : 'beds'}`,
+        availableFrom: room.availableFrom ? new Date(room.availableFrom).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'Available now',
+        price: room.price?.weekday || room.price || 0,
+        unit: room.price?.unit || 'day',
+        rating: room.rating?.average || 0,
+        image: room.images?.[0]?.url || room.images?.[0] || 'https://via.placeholder.com/400',
+        city: room.city,
+      }));
+
+      setResults(transformedRooms);
+    } catch (error) {
+      console.error('Error loading results:', error);
+      Alert.alert('Error', 'Failed to load search results. Please try again.');
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const validateParams = useCallback(() => {
     const issues = [];
@@ -89,25 +95,6 @@ export default function ResultsScreen() {
   }, [city, start, end]);
 
   React.useEffect(() => validateParams(), [validateParams]);
-
-  const filtered = useMemo(() => {
-    const min = Number(params.min || 0);
-    const max = Number(params.max || Number.MAX_SAFE_INTEGER);
-    const reqKeys = (() => {
-      try { return params.req ? JSON.parse(params.req) : []; } catch { return []; }
-    })();
-
-    return MOCK_RESULTS.filter((r) => {
-      const priceOk = r.price >= min && r.price <= max;
-      const typeOk =
-        type === "Any type" ||
-        (type === "Room" && r.subtitle?.toLowerCase().includes("room")) ||
-        (type === "Entire home" && r.subtitle?.toLowerCase().includes("entire"));
-      // Placeholder: requirements not strictly enforced in mock
-      const reqOk = true;
-      return priceOk && typeOk && reqOk;
-    });
-  }, [params.min, params.max, type, params.req]);
 
   const onBack = () => {
     if (router.canGoBack?.()) router.back();
@@ -151,13 +138,23 @@ const onCardPress = (item) => {
 
 
 
-  const toggleWishlist = (room) => {
-    const normalized = {
-      ...room,
-      details: Array.isArray(room.details) ? room.details : room.details ? [room.details] : [],
-    };
-    if (isWishlisted(room.id)) remove(room.id);
-    else add(normalized);
+  const toggleWishlist = async (room) => {
+    try {
+      if (isWishlisted(room.id)) {
+        await wishlistAPI.remove(room.id);
+        remove(room.id);
+      } else {
+        await wishlistAPI.add(room.id);
+        const normalized = {
+          ...room,
+          details: Array.isArray(room.details) ? room.details : room.details ? [room.details] : [],
+        };
+        add(normalized);
+      }
+    } catch (error) {
+      console.error('Error toggling wishlist:', error);
+      Alert.alert('Error', 'Failed to update wishlist. Please try again.');
+    }
   };
 
   const renderHeader = () => (
@@ -224,17 +221,36 @@ const onCardPress = (item) => {
 
   const renderItem = ({ item }) => <Card item={item} />;
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        {renderHeader()}
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#007BFF" />
+          <Text style={{ marginTop: 10, color: '#666' }}>Loading results...</Text>
+        </View>
+        <BottomNav />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       {renderHeader()}
       <FlatList
-        data={filtered}
+        data={results}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         ItemSeparatorComponent={() => <View style={{ height: 18 }} />}
         ListFooterComponent={<View style={{ height: 90 }} />}
+        ListEmptyComponent={
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: '#666', fontSize: 16 }}>No rooms found</Text>
+            <Text style={{ color: '#999', fontSize: 14, marginTop: 5 }}>Try adjusting your filters</Text>
+          </View>
+        }
       />
       <BottomNav />
     </SafeAreaView>

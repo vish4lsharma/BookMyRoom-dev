@@ -4,24 +4,58 @@ import { useRouter } from "expo-router";
 
 import AppLogo from "../components/common/AppLogo";
 import LoginCard from "../components/login/LoginCard";
-import MobileInput from "../components/login/MobileInput";
 import PrimaryButton from "../components/common/PrimaryButton";
 import GoogleButton from "../components/common/GoogleButton";
+import SignupInput from "../components/signup/SignupInput";
 
 import { getStyles, scaleFont } from "../styles/loginStyles";
 
 export default function LoginScreen() {
-  const [mobile, setMobile] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const { width, height } = useWindowDimensions();
   const styles = getStyles(width, height);
 
-  const validate = () => /^[0-9]{10}$/.test(mobile);
+  const validate = () => {
+    if (!username || !username.trim()) {
+      Alert.alert("Error", "Please enter your username or email");
+      return false;
+    }
+    if (!password || !password.trim()) {
+      Alert.alert("Error", "Please enter your password");
+      return false;
+    }
+    return true;
+  };
 
-  const handleConfirm = () => {
-    if (!validate()) return Alert.alert("Error", "Enter valid 10-digit mobile number");
-    router.push("/OtpScreen");
+  const handleConfirm = async () => {
+    if (!validate()) return;
+    
+    try {
+      setLoading(true);
+      const { authAPI } = require("../services/api");
+      const response = await authAPI.login(username.trim(), password);
+      
+      if (response.success && response.token) {
+        // Store token and user data
+        const { authService } = require("../services/authService");
+        await authService.setToken(response.token);
+        await authService.setUser(response.user);
+        
+        Alert.alert("Success", "Login successful!");
+        router.replace("/explore/ExploreScreen");
+      } else {
+        Alert.alert("Error", response.message || "Login failed");
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      Alert.alert("Error", error.message || "Login failed. Please check your credentials and try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -31,9 +65,28 @@ export default function LoginScreen() {
         <AppLogo styles={styles} />
 
         <LoginCard styles={styles}>
-          <MobileInput mobile={mobile} setMobile={setMobile} styles={styles} />
+          <SignupInput 
+            placeholder="Username or Email" 
+            value={username} 
+            onChangeText={(text) => setUsername(text.toLowerCase())} 
+            autoCapitalize="none"
+            styles={styles} 
+          />
 
-          <PrimaryButton text="CONFIRM" onPress={handleConfirm} styles={styles} />
+          <SignupInput 
+            placeholder="Password" 
+            value={password} 
+            onChangeText={setPassword} 
+            secureTextEntry
+            styles={styles} 
+          />
+
+          <PrimaryButton 
+            text={loading ? "LOGGING IN..." : "LOGIN"} 
+            onPress={handleConfirm} 
+            styles={styles} 
+            disabled={loading}
+          />
 
           <Text style={styles.orText}>OR</Text>
 

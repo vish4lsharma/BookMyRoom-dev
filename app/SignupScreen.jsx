@@ -7,32 +7,91 @@ import SignupCard from "../components/signup/SignupCard";
 import SignupInput from "../components/signup/SignupInput";
 import PrimaryButton from "../components/common/PrimaryButton";
 import GoogleButton from "../components/common/GoogleButton";
-import SignupPhoneInput from "../components/signup/SignupPhoneInput";
 
 import { getStyles, scaleFont } from "../styles/signupStyles";
 
 export default function SignupScreen() {
   const [name, setName] = useState("");
-  const [mobile, setMobile] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [aadhar, setAadhar] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const styles = getStyles(width, height);
 
   const validate = () => {
-    if (!name.trim()) return Alert.alert("Error", "Enter your name");
-    if (!/^[0-9]{10}$/.test(mobile)) return Alert.alert("Error", "Enter valid 10-digit mobile");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return Alert.alert("Error", "Enter valid email");
-    if (!/^[0-9]{12}$/.test(aadhar)) return Alert.alert("Error", "Enter valid 12-digit Aadhar");
+    if (!name || !name.trim()) {
+      Alert.alert("Error", "Please enter your name");
+      return false;
+    }
+    
+    if (!username || !username.trim()) {
+      Alert.alert("Error", "Please enter a username");
+      return false;
+    }
+    
+    if (username.trim().length < 3) {
+      Alert.alert("Error", "Username must be at least 3 characters");
+      return false;
+    }
+    
+    if (!/^[a-z0-9_]+$/i.test(username.trim())) {
+      Alert.alert("Error", "Username can only contain letters, numbers, and underscores");
+      return false;
+    }
+    
+    if (!email || !email.trim()) {
+      Alert.alert("Error", "Please enter your email");
+      return false;
+    }
+    
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      Alert.alert("Error", "Please enter a valid email address");
+      return false;
+    }
+    
+    if (!password || password.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters");
+      return false;
+    }
+    
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match");
+      return false;
+    }
+    
     return true;
   };
 
-  const handleConfirm = () => {
-    if (validate()) {
-      Alert.alert("Success", "Signup Successful!");
-      router.push("/OtpScreen");
+  const handleConfirm = async () => {
+    if (!validate()) return;
+
+    try {
+      setLoading(true);
+      
+      // Register user via API
+      const { authAPI } = require("../services/api");
+      const response = await authAPI.register({
+        name: name.trim(),
+        username: username.trim().toLowerCase(),
+        email: email.trim(),
+        password: password,
+      });
+
+      if (response.success) {
+        Alert.alert("Success", "Registration successful! Please login.");
+        router.push("/LoginScreen");
+      } else {
+        Alert.alert("Error", response.message || "Registration failed. Please try again.");
+      }
+    } catch (error) {
+      console.error('Signup error:', error);
+      Alert.alert("Error", error.message || "Registration failed. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -46,17 +105,15 @@ export default function SignupScreen() {
 
           <SignupInput placeholder="Enter Your Name" value={name} onChangeText={setName} styles={styles} />
 
-          <View style={styles.mobileRow}>
-            
-            <SignupPhoneInput mobile={mobile} setMobile={setMobile} styles={styles} />
+          <SignupInput placeholder="Enter Username" value={username} onChangeText={(text) => setUsername(text.toLowerCase())} autoCapitalize="none" styles={styles} />
 
-          </View>
+          <SignupInput placeholder="Enter Your Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" styles={styles} />
 
-          <SignupInput placeholder="Enter Your Email" value={email} onChangeText={setEmail} keyboardType="email-address" styles={styles} />
+          <SignupInput placeholder="Enter Password" value={password} onChangeText={setPassword} secureTextEntry styles={styles} />
 
-          <SignupInput placeholder="Enter Your Aadhar Number" value={aadhar} onChangeText={setAadhar} keyboardType="numeric" styles={styles} />
+          <SignupInput placeholder="Confirm Password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry styles={styles} />
 
-          <PrimaryButton text="CONFIRM" onPress={handleConfirm} styles={styles} />
+          <PrimaryButton text={loading ? "SIGNING UP..." : "SIGN UP"} onPress={handleConfirm} styles={styles} disabled={loading} />
 
           <Text style={styles.orText}>OR</Text>
 

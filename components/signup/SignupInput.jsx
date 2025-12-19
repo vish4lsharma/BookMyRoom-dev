@@ -1,7 +1,7 @@
 import React from "react";
 import { TextInput } from "react-native";
 
-export default function SignupInput({ value, onChangeText, placeholder, keyboardType, styles }) {
+export default function SignupInput({ value, onChangeText, placeholder, keyboardType, secureTextEntry, autoCapitalize, styles }) {
   return (
     <TextInput
       style={styles.input}
@@ -9,6 +9,8 @@ export default function SignupInput({ value, onChangeText, placeholder, keyboard
       keyboardType={keyboardType}
       value={value}
       onChangeText={onChangeText}
+      secureTextEntry={secureTextEntry}
+      autoCapitalize={autoCapitalize || "sentences"}
     />
   );
 }

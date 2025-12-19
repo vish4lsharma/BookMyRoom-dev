@@ -1,61 +1,29 @@
-import React, { useState } from "react";
-import { View, ImageBackground, SafeAreaView, useWindowDimensions } from "react-native";
-import { useRouter } from "expo-router";
+import { useEffect } from "react";
+import { useRouter, useSegments } from "expo-router";
+import { ActivityIndicator, View, StyleSheet } from "react-native";
 
-import LanguageHeader from "../components/ChooseLanguage/LanguageHeader";
-import LanguageTitle from "../components/ChooseLanguage/LanguageTitle";
-import LanguageOption from "../components/ChooseLanguage/LanguageOption";
-import ContinueButton from "../components/ChooseLanguage/ContinueButton";
-
-import { getStyles } from "../styles/chooseLanguageStyles";
-
-export default function ChooseLanguageScreen() {
+export default function Index() {
   const router = useRouter();
-  const [selectedLanguage, setSelectedLanguage] = useState("English");
+  const segments = useSegments();
 
-  const { width, height } = useWindowDimensions();
-  const styles = getStyles(width, height);
+  useEffect(() => {
+    // Redirect to LoginScreen immediately
+    router.replace("/LoginScreen");
+  }, []);
 
+  // Show loading while redirecting
   return (
-    <SafeAreaView style={styles.container}>
-      <ImageBackground
-        source={require("../assets/images/welcome-bg.jpg")}
-        style={styles.background}
-        resizeMode="cover"
-      >
-        <View style={styles.overlay}>
-
-          <LanguageHeader styles={styles} />
-
-          <LanguageTitle styles={styles} />
-
-          <View style={styles.languageBox}>
-
-            <LanguageOption
-              label="English"
-              symbol="A"
-              isSelected={selectedLanguage === "English"}
-              onPress={() => setSelectedLanguage("English")}
-              styles={styles}
-            />
-
-            <LanguageOption
-              label="हिन्दी"
-              subLabel="Hindi"
-              symbol="क"
-              isSelected={selectedLanguage === "Hindi"}
-              onPress={() => setSelectedLanguage("Hindi")}
-              styles={styles}
-            />
-
-            <ContinueButton
-              styles={styles}
-              onPress={() => router.push("/LoginScreen")}
-            />
-
-          </View>
-        </View>
-      </ImageBackground>
-    </SafeAreaView>
+    <View style={styles.container}>
+      <ActivityIndicator size="large" color="#007BFF" />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+});

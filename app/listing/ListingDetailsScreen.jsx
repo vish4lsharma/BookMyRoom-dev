@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { View, ScrollView, Text, StyleSheet, StatusBar } from "react-native";
+import { View, ScrollView, Text, StyleSheet, StatusBar, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
 import HeaderCarousel from "../../components/listing/HeaderCarousel";
@@ -17,155 +17,177 @@ import FooterReserveBar from "../../components/listing/FooterReserveBar";
 
 import { useRecentStore } from "../_store/recentStore";
 import { useWishlist } from "../_store/wishlistStore";
+import { roomsAPI, reviewsAPI, wishlistAPI } from "../../services/api";
 
 export default function ListingDetailsScreen() {
   const params = useLocalSearchParams();
   const addRecent = useRecentStore((state) => state.addRecent);
-
   const { add, remove, isWishlisted } = useWishlist();
+  const [listing, setListing] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // ✅ Normalize details
-  let rawDetails = params.details;
-  let detailsArray = [];
+  useEffect(() => {
+    loadListing();
+  }, [params.id]);
 
-  try {
-    detailsArray = Array.isArray(JSON.parse(rawDetails))
-      ? JSON.parse(rawDetails)
-      : [rawDetails];
-  } catch {
-    detailsArray = Array.isArray(rawDetails)
-      ? rawDetails
-      : rawDetails
-      ? [rawDetails]
-      : [];
-  }
+  const loadListing = async () => {
+    try {
+      setLoading(true);
+      const roomId = params.id;
+      
+      // Fetch room details
+      const roomResponse = await roomsAPI.getById(roomId);
+      if (!roomResponse.success) {
+        throw new Error('Room not found');
+      }
+      
+      const room = roomResponse.data;
+      
+      // Fetch reviews
+      const reviewsResponse = await reviewsAPI.getByRoom(roomId);
+      const roomReviews = reviewsResponse.data || [];
 
-  const normalizedDetails = detailsArray.join(" • ");
-
-  // ✅ Images array
-  const images = params.images ? JSON.parse(params.images) : [params.image];
-
-  const listing = useMemo(
-    () => ({
-      id: params.id,
-      title: params.title,
-      subtitle: params.subtitle,
-      price: Number(params.price),
-      rating: params.rating,
-      city: params.city,
-      details: normalizedDetails,
-      availableFrom: params.availableFrom,
-      unit: params.unit ?? "24 hour",
-      reviewsCount: params.reviewsCount ?? 10,
-      images,
-      highlights: [
-        {
+      // Transform room data
+      const transformedListing = {
+        id: room._id || room.id,
+        title: room.title,
+        subtitle: room.subtitle || room.stayType,
+        price: room.price?.weekday || room.price || 0,
+        rating: room.rating?.average || 0,
+        city: room.city,
+        details: `${room.beds || 1} ${room.beds === 1 ? 'bed' : 'beds'}`,
+        availableFrom: room.availableFrom ? new Date(room.availableFrom).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'Available now',
+        unit: room.price?.unit || 'day',
+        reviewsCount: room.rating?.count || roomReviews.length,
+        images: room.images?.map(img => img.url) || [room.images?.[0]] || ['https://via.placeholder.com/400'],
+        highlights: room.highlights?.map(h => ({
           icon: "ribbon-outline",
-          title: "Exceptional Ranking",
-          desc: "Ranks highly based on guest ratings & reviews.",
-        },
-        {
-          icon: "log-in-outline",
-          title: "Seamless Arrival",
-          desc: "Smooth check-in experience.",
-        },
-        {
-          icon: "share-outline",
-          title: "Shared Living",
-          desc: "Private room in a shared home.",
-        },
-      ],
-      about:
-        "A cozy and inviting stay perfect for short or long visits. Clean, peaceful, and well-connected to local markets.",
-      roomFacts: [{ label: normalizedDetails || "1 bed", value: "", icon: "bed" }],
-      amenities: [
-        { label: "Wifi", icon: "wifi-outline" },
-        { label: "Kitchen", icon: "restaurant-outline" },
-        { label: "Private entrance", icon: "lock-closed-outline" },
-      ],
-      location: {
-        title: params.city ?? "Location",
-        latitude: 28.5355,
-        longitude: 77.391,
-      },
-      ratingSummary: {
-        score: 4.9,
-        tags: ["Clean", "Friendly host"],
-      },
-      topReview: {
-        name: "Guest",
-        avatar:
-          "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?w=256&q=80",
-        ago: "1 month ago",
-        stars: 5,
-        text: "Great stay! Clean & peaceful environment.",
-      },
-      host: {
-        name: "Your Host",
-        avatar:
-          "https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=256&q=80",
-        isSuperhost: true,
-        stats: { reviews: 120, rating: 4.9, years: 2 },
-        badges: [
-          { icon: "chatbubble-ellipses-outline", text: "Speaks English & Hindi" },
-          { icon: "home-outline", text: `Lives in ${params.city}` },
+          title: h,
+          desc: "",
+        })) || [
+          {
+            icon: "ribbon-outline",
+            title: "Exceptional Ranking",
+            desc: "Ranks highly based on guest ratings & reviews.",
+          },
         ],
-        response: { rate: "100%", time: "within an hour" },
-      },
-      sections: [
-        { title: "Availability", value: "Available Now" },
-        {
-          title: "House rules",
-          value: "Check-in after 3:00pm\nCheckout before 12:00pm\nNo smoking",
+        about: room.description || "A cozy and inviting stay perfect for short or long visits.",
+        roomFacts: [
+          { label: `${room.beds || 1} ${room.beds === 1 ? 'bed' : 'beds'}`, value: "", icon: "bed" },
+          { label: `${room.bedrooms || 0} ${room.bedrooms === 1 ? 'bedroom' : 'bedrooms'}`, value: "", icon: "home" },
+          { label: `${room.bathrooms || 0} ${room.bathrooms === 1 ? 'bathroom' : 'bathrooms'}`, value: "", icon: "water" },
+        ],
+        amenities: room.amenities?.map(a => ({
+          label: a,
+          icon: "checkmark-circle-outline",
+        })) || [],
+        location: {
+          title: room.city || "Location",
+          latitude: room.address?.coordinates?.latitude || 28.5355,
+          longitude: room.address?.coordinates?.longitude || 77.391,
         },
-        {
-          title: "Safety & property",
-          value: "CCTV + gated entry",
-          showMore: true,
+        ratingSummary: {
+          score: room.rating?.average || 0,
+          tags: roomReviews.slice(0, 3).flatMap(r => r.tags || []),
         },
-      ],
-    }),
-    [params]
-  );
+        topReview: roomReviews[0] ? {
+          name: roomReviews[0].guest?.name || "Guest",
+          avatar: roomReviews[0].guest?.avatar || "https://via.placeholder.com/100",
+          ago: new Date(roomReviews[0].createdAt).toLocaleDateString(),
+          stars: roomReviews[0].rating?.overall || 5,
+          text: roomReviews[0].comment || "Great stay!",
+        } : null,
+        host: {
+          name: room.host?.name || "Host",
+          avatar: room.host?.avatar || "https://via.placeholder.com/100",
+          isSuperhost: false,
+          stats: { reviews: roomReviews.length, rating: room.rating?.average || 0, years: 1 },
+          badges: [
+            { icon: "home-outline", text: `Lives in ${room.city}` },
+          ],
+          response: { rate: "100%", time: "within an hour" },
+        },
+        sections: [
+          { title: "Availability", value: room.availableFrom ? `Available from ${new Date(room.availableFrom).toLocaleDateString()}` : "Available Now" },
+          {
+            title: "House rules",
+            value: room.bookingPreferences?.checkInTime ? `Check-in after ${room.bookingPreferences.checkInTime}\nCheckout before ${room.bookingPreferences.checkOutTime || '12:00pm'}` : "Standard check-in/checkout",
+          },
+        ],
+      };
+
+      setListing(transformedListing);
+      setReviews(roomReviews);
+
+      // Add to recently viewed
+      addRecent({
+        id: transformedListing.id,
+        title: transformedListing.title,
+        subtitle: transformedListing.subtitle,
+        city: transformedListing.city,
+        price: transformedListing.price,
+        unit: transformedListing.unit,
+        rating: transformedListing.rating,
+        image: transformedListing.images[0],
+        details: transformedListing.details,
+        availableFrom: transformedListing.availableFrom,
+      });
+    } catch (error) {
+      console.error('Error loading listing:', error);
+      Alert.alert('Error', 'Failed to load room details. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const [imagesIdx, setImagesIdx] = useState(0);
 
-  // ✅ Save to Recently Viewed
-  useEffect(() => {
-    addRecent({
-      id: listing.id,
-      title: listing.title,
-      subtitle: listing.subtitle,
-      city: listing.city,
-      price: listing.price,
-      unit: listing.unit,
-      rating: listing.rating,
-      image: listing.images[0],
-      details: detailsArray,
-      availableFrom: listing.availableFrom,
-    });
-  }, [listing]);
+  // Wishlist handling
+  const liked = listing ? isWishlisted(listing.id) : false;
 
-  // ✅ Wishlist handling
-  const liked = isWishlisted(listing.id);
-
-  const toggleWishlist = () => {
-    const obj = {
-      id: listing.id,
-      title: listing.title,
-      subtitle: listing.subtitle,
-      city: listing.city,
-      price: listing.price,
-      unit: listing.unit,
-      rating: listing.rating,
-      image: listing.images[0],
-      details: detailsArray,
-      availableFrom: listing.availableFrom,
-    };
-
-    if (liked) remove(listing.id);
-    else add(obj);
+  const handleReserve = () => {
+    // Navigate to booking screen or show booking modal
+    Alert.alert('Reserve', 'Booking functionality will be implemented');
   };
+
+  const toggleWishlist = async () => {
+    if (!listing) return;
+
+    try {
+      if (liked) {
+        await wishlistAPI.remove(listing.id);
+        remove(listing.id);
+      } else {
+        await wishlistAPI.add(listing.id);
+        const obj = {
+          id: listing.id,
+          title: listing.title,
+          subtitle: listing.subtitle,
+          city: listing.city,
+          price: listing.price,
+          unit: listing.unit,
+          rating: listing.rating,
+          image: listing.images[0],
+          details: listing.details,
+          availableFrom: listing.availableFrom,
+        };
+        add(obj);
+      }
+    } catch (error) {
+      console.error('Error toggling wishlist:', error);
+      Alert.alert('Error', 'Failed to update wishlist. Please try again.');
+    }
+  };
+
+  if (loading || !listing) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={{ marginTop: 10, color: '#666' }}>Loading room details...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
@@ -192,12 +214,12 @@ export default function ListingDetailsScreen() {
         <AmenitiesSection items={listing.amenities} totalCount={17} />
         <LocationMap location={listing.location} />
         <RatingSummary data={listing.ratingSummary} />
-        <ReviewsSection review={listing.topReview} total={9} />
+        <ReviewsSection review={listing.topReview} total={reviews.length} />
         <HostCard host={listing.host} />
         <InfoList sections={listing.sections} />
       </ScrollView>
 
-      <FooterReserveBar price={listing.price} cta="Reserve" />
+      <FooterReserveBar price={listing.price} cta="Reserve" onPress={handleReserve} />
     </View>
   );
 }

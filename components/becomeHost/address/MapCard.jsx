@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import styles from "../../../styles/addressStyles";
+
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 export default function MapCard({ location, setLocation }) {
   return (

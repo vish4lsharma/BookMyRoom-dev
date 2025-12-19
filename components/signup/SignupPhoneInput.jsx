@@ -19,7 +19,11 @@ export default function SignupPhoneInput({ mobile, setMobile, styles }) {
         keyboardType="numeric"
         maxLength={10}
         value={mobile}
-        onChangeText={setMobile}
+        onChangeText={(text) => {
+          // Only allow digits
+          const digitsOnly = text.replace(/\D/g, '');
+          setMobile(digitsOnly);
+        }}
       />
 
     </View>
